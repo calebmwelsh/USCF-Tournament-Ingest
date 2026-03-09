@@ -6,6 +6,11 @@ import os
 import boto3
 from playwright.sync_api import sync_playwright
 
+# Standard logging config for Lambda
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 # In a Lambda (Docker), we use the official Playwright package but need specific flags.
 
 
