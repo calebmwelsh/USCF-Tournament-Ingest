@@ -1,8 +1,8 @@
 # USCF Tournament Scraper Pipeline
 
-> **Note on Architecture**: This project follows a 3-layer architecture consisting of Intent (`directives/`), Orchestration (Agent), and Execution (`execution/`). See global agent instructions for details.
+This project is an automated, end-to-end data pipeline designed to extract, deduplicate, and refine chess tournament information from the United States Chess Federation (USCF) website. 
 
-This pipeline automates the extraction, deduplication, and AI-powered refinement of USCF tournament data.
+Because USCF tournament listings are often unstructured and lack standardized formatting for critical details like entry fees, prize funds, schedules, and sections, this pipeline leverages AI (Google Gemini & Vertex AI) to parse messy HTML text blocks into clean, structured JSON data. By executing deterministic scraping scripts and maintaining a local cache for delta-scraping, the system efficiently normalizes event data, making it ready for downstream consumption in APIs, databases, or mapping applications.
 
 ## Prerequisites
 1. **Python 3.10+**
