@@ -1,0 +1,31 @@
+# Temporary files
+.tmp/
+
+# Environment variables and secrets
+.env/
+
+# Logs
+data/logs/
+data/downloads/
+
+# Built artifacts and temporary output files
+trust-policy.json
+response.json
+function.zip
+crawler_output.json
+crawler_output2.json
+
+
+# aws
+cloud/aws_deployment_guide.md
+cloud/deploy_aws.bat
+
+# other files
+AGENTS.md
+notes.txt
+
+# directives
+directives/
+/utils/__pycache__
+utils/cost_tracker.py
+/execution/data/logs

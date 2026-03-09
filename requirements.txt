@@ -1,0 +1,6 @@
+google-genai
+requests
+beautifulsoup4
+python-dotenv
+boto3
+playwright
