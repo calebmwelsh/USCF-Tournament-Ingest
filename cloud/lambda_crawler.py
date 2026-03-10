@@ -16,8 +16,10 @@ logger.setLevel(logging.INFO)
 
 SQS_QUEUE_URL = os.environ.get("SQS_QUEUE_URL")
 S3_BUCKET = os.environ.get("RESULT_BUCKET")
-sqs = boto3.client('sqs')
-s3 = boto3.client('s3')
+# Explicitly set region to ensure consistency as requested
+REGION = "us-east-2"
+sqs = boto3.client('sqs', region_name=REGION)
+s3 = boto3.client('s3', region_name=REGION)
 
 def get_existing_hashes():
     """List all hashes of already refined tournaments in S3 master JSON."""

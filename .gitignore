@@ -29,3 +29,6 @@ directives/
 /utils/__pycache__
 utils/cost_tracker.py
 /execution/data/logs
+cloud/cleanup_us_east_1.bat
+cloud/bucket_policy.json
+cloud/cors.json

@@ -15,7 +15,9 @@ from execution.refine_uscf_ai import generate_id, get_gemini_client, refine_entr
 from execution.scrape_uscf import scrape_tournament
 
 S3_BUCKET = os.environ.get("RESULT_BUCKET")
-s3 = boto3.client('s3')
+# Explicitly set region to ensure consistency as requested
+REGION = "us-east-2"
+s3 = boto3.client('s3', region_name=REGION)
 
 # Standard logging config for Lambda
 logging.basicConfig(level=logging.INFO)
