@@ -63,11 +63,27 @@ def extract_raw_data(soup, url):
 
     raw_content = f"TITLE: {title} | URL: {url} | [META DATA] {meta_text} | [FULL PAGE CONTENT] {full_text}"
 
+    # Content hash (primary delta signal) — SHA256 of raw_content
+    # If this hasn't changed, the AI output wouldn't change either.
+    content_hash = hashlib.sha256(raw_content.encode('utf-8')).hexdigest()
+
+    # Modification time (secondary delta signal) — from og:updated_time meta tag
+    modified_at = None
+    og_updated = soup.find('meta', attrs={'property': 'og:updated_time'})
+    art_modified = soup.find('meta', attrs={'property': 'article:modified_time'})
+    
+    if og_updated:
+        modified_at = og_updated.get('content')
+    elif art_modified:
+        modified_at = art_modified.get('content')
+
     return {
         "url": url,
         "title": title,
         "raw_content": raw_content,
-        "scrapedAt": datetime.utcnow().isoformat() + "Z"
+        "scrapedAt": datetime.utcnow().isoformat() + "Z",
+        "contentHash": content_hash,
+        "modifiedAt": modified_at
     }
 
 def scrape_tournament(url=None, html_file=None):

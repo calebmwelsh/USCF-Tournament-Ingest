@@ -97,8 +97,13 @@ def main():
     # The refinement script handles its own limits if needed
     if not run_stage("REFINE", "execution/refine_uscf_ai.py"):
         logging.info("Refinement stage completed with warnings or was manually stopped (Progress saved).")
-    else:
-        logging.info("Pipeline completed successfully!")
+
+    # Step 4: Maintenance (Status updates and cleanup)
+    if not run_stage("MAINTAIN", "execution/maintain_tournaments.py"):
+        logging.error("Pipeline aborted at MAINTAIN stage.")
+        return
+
+    logging.info("Pipeline completed successfully!")
 
 if __name__ == "__main__":
     main()

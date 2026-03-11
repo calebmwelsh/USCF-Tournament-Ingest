@@ -170,8 +170,8 @@ def main():
             except:
                 pass
 
-    refined_urls = {e.get('url') for e in refined_data if e.get('url')}
-    logging.info(f"Resuming from existing progress: {len(refined_urls)} entries.")
+    refined_lookup = {e.get('url'): e for e in refined_data if e.get('url')}
+    logging.info(f"Resuming from existing progress: {len(refined_lookup)} entries.")
     
     # Load model pool
     model_pool = os.getenv("GEMINI_MODELS_POOL", "models/gemini-flash-latest").split(',')
@@ -184,11 +184,34 @@ def main():
     current_model_idx = 0
     use_vertex_permanent = False
 
+    # Iterate through latest crawl data and update refined_lookup.
+    # Skip logic uses two signals:
+    #   PRIMARY:   contentHash — SHA256 of raw_content. If unchanged, AI output won't change.
+    #   SECONDARY: modifiedAt  — og:updated_time from the page. Useful but can fire on trivial CMS saves.
+    # Skip if EITHER signal confirms no real change (hash match is sufficient on its own).
+    
     for i, entry in enumerate(data):
         url = entry.get('url')
-        if url in refined_urls:
-            continue
-            
+        existing_entry = refined_lookup.get(url)
+        new_hash = entry.get('contentHash')
+        new_modified_at = entry.get('modifiedAt')
+
+        if existing_entry:
+            existing_hash = existing_entry.get('contentHash')
+            existing_modified_at = existing_entry.get('modifiedAt')
+
+            # PRIMARY: content hash match → definitely unchanged, skip AI
+            if new_hash and existing_hash and new_hash == existing_hash:
+                logging.info(f"[{i+1}/{len(data)}] Skipping (hash match): {entry.get('title')}")
+                existing_entry["scrapedAt"] = entry.get("scrapedAt")
+                continue
+
+            # SECONDARY: modifiedAt match (no hash yet from old entries) → likely unchanged, skip AI
+            if not existing_hash and new_modified_at and existing_modified_at and new_modified_at == existing_modified_at:
+                logging.info(f"[{i+1}/{len(data)}] Skipping (modifiedAt match, no prior hash): {entry.get('title')}")
+                existing_entry["scrapedAt"] = entry.get("scrapedAt")
+                continue
+
         logging.info(f"[{i+1}/{len(data)}] AI Parsing/Refining: {entry.get('title')}")
         
         refined_fields = None
@@ -200,35 +223,36 @@ def main():
         else:
             # Cycle through model pool if 429 hit
             for _ in range(len(model_pool)):
-                model = model_pool[current_model_idx]
-                logging.info(f"  [AI] Using Pool: {model}")
+                current_model = model_pool[current_model_idx]
+                logging.info(f"  [AI] Using Pool: {current_model}")
                 
-                # refine_entry returns (data, was_429_hit)
-                refined_fields, was_429_hit = refine_entry(client, entry.get("raw_content"), model, vertex_client, vertex_model)
+                # Check for Google GenAI client (Gemini) vs potential other logic
+                # For simplicity, assumed get_gemini_client returns appropriate client
+                # The 'client' variable is already initialized outside the loop.
+                refined_fields, was_429_hit = refine_entry(client, entry.get("raw_content"), current_model, vertex_client, vertex_model)
                 
-                if was_429_hit:
-                    logging.warning("  [Sticky] Rate limit hit! Switching to Vertex PERMANENTLY for the rest of this run.")
-                    use_vertex_permanent = True
-                    break
-                    
                 if refined_fields:
                     break
                 
-                # If failed without 429, rotate model and wait
-                current_model_idx = (current_model_idx + 1) % len(model_pool)
-                wait_time = random.uniform(2, 5)
-                logging.warning(f"  [Wait] Rotating model. Sleeping {wait_time:.1f}s...")
-                time.sleep(wait_time)
+                if was_429_hit: # Changed from error_code == 429 to was_429_hit
+                    logging.warning(f"  [Fallback] Primary API quota exceeded (429). Trying next...")
+                    current_model_idx = (current_model_idx + 1) % len(model_pool)
+                    # If we've circled back to the start, try Vertex permanently
+                    if current_model_idx == 0:
+                        logging.warning("  [Sticky] All Gemini pool models hit rate limits. Switching to Vertex...")
+                        use_vertex_permanent = True
+                        break
+                else:
+                    # Non-quota error, don't necessarily skip model
+                    break
             
-            # Final fallback check: if all pool models failed but we didn't trigger permanent switch yet
+            # Final fallback to Vertex if pool failed
             if not refined_fields and not use_vertex_permanent and vertex_client:
-                 logging.info("  [Switch] All pool models failed. Final attempt with Vertex.")
-                 refined_fields, was_429_hit = refine_entry(vertex_client, entry.get("raw_content"), vertex_model)
-                 if was_429_hit or refined_fields:
-                     use_vertex_permanent = True
-        
+                logging.info(f"  [Fallback] Trying Vertex AI: {vertex_model}")
+                refined_fields, _ = refine_entry(vertex_client, entry.get("raw_content"), vertex_model)
+
         if refined_fields:
-            # Create a clean entry from scratch using AI results merging with scrape metadata
+            # Prepare final structure
             final_entry = {
                 "id": None,
                 "source": "uscf",
@@ -240,6 +264,10 @@ def main():
             # Add all AI fields
             final_entry.update(refined_fields)
             
+            # Preserve contentHash (primary) and modifiedAt (secondary) from scrape stage
+            final_entry["contentHash"] = entry.get("contentHash")
+            final_entry["modifiedAt"] = entry.get("modifiedAt")
+            
             # Generate the reliable ID based on AI-cleaned metadata
             final_entry["id"] = generate_id(
                 final_entry.get("title"), 
@@ -247,21 +275,25 @@ def main():
                 final_entry.get("location")
             )
             
-            refined_data.append(final_entry)
-            refined_urls.add(url)
+            if existing_entry:
+                # Update in place to preserve its position in clarified_data list
+                existing_entry.update(final_entry)
+            else:
+                # New entry
+                refined_data.append(final_entry)
+                refined_lookup[url] = final_entry
             
-            # Incremental save every 1 success (due to low quota risk)
-            if len(refined_data) % 1 == 0:
-                with open(output_file, "w", encoding="utf-8") as f:
-                    json.dump(refined_data, f, indent=4, ensure_ascii=False)
-                logging.info(f"  [Progress] Saved {len(refined_data)} refined tournaments.")
+            # Incremental save
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(refined_data, f, indent=4, ensure_ascii=False)
+            logging.info(f"  [Progress] Saved {len(refined_data)} refined tournaments.")
         else:
-            logging.error(f"  [Skip] Failed to refine {entry.get('title')} after trying all models in pool.")
+            logging.error(f"  [Skip] Failed to refine {entry.get('title')} after trying all models.")
         
-        # Base sleep to respect 8 RPM (avg 7.5s per request)
+        # Base sleep
         time.sleep(7.5)
 
-    # Final save
+    # Final save (redundant but safe)
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(refined_data, f, indent=4, ensure_ascii=False)
     
