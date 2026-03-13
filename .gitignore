@@ -2,7 +2,7 @@
 .tmp/
 
 # Environment variables and secrets
-.env/
+.env/.env
 
 # Logs
 data/logs/
