@@ -24,7 +24,7 @@ jobs:
 
       - name: Build, Tag, and Push Docker Image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: uscf-crawler
           IMAGE_TAG: latest
         run: |
@@ -33,7 +33,7 @@ jobs:
 
       - name: Update Crawler Lambda
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REPO_NAME: uscf-crawler
           BUCKET_NAME: uscf-chess-data-${{ secrets.AWS_ACCOUNT_ID }}
           QUEUE_URL: https://sqs.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.AWS_ACCOUNT_ID }}/uscf-tournaments-queue
@@ -46,7 +46,7 @@ jobs:
 
       - name: Update Refiner Lambda
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REPO_NAME: uscf-crawler
           BUCKET_NAME: uscf-chess-data-${{ secrets.AWS_ACCOUNT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
