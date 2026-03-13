@@ -36,11 +36,13 @@ def main():
         current_status = entry.get('status')
         
         # 1. Status Aging (upcoming -> ongoing -> finished)
-        if start_date_str and end_date_str:
+        if start_date_str:
+            # Fallback: if endDate is missing, assume it's a 1-day tournament
+            effective_end_date_str = end_date_str if end_date_str else start_date_str
             try:
                 # Dates are usually YYYY-MM-DD from AI refinement
                 start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-                end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                end_date = datetime.strptime(effective_end_date_str, "%Y-%m-%d").date()
                 
                 new_status = current_status
                 if end_date < today:
@@ -69,10 +71,36 @@ def main():
                 except:
                     pass
 
-    if updated_count > 0 or expired_count > 0:
+    # 3. Pruning: Remove finished tournaments older than 7 days
+    initial_count = len(data)
+    from datetime import timedelta
+    
+    # We filter the list to keep only those that AREN'T old finished ones
+    new_data = []
+    for entry in data:
+        keep = True
+        if entry.get('status') == "finished":
+            date_str = entry.get('endDate') or entry.get('startDate')
+            if date_str:
+                try:
+                    event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    if event_date < today - timedelta(days=7):
+                        keep = False
+                except:
+                    pass
+        if keep:
+            new_data.append(entry)
+            
+    pruned_count = len(data) - len(new_data)
+    data = new_data
+    
+    if pruned_count > 0:
+        logging.info(f"  [Pruning] Removed {pruned_count} old finished tournaments.")
+
+    if updated_count > 0 or expired_count > 0 or pruned_count > 0:
         with open(REFINED_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
-        logging.info(f"Maintenance complete. {updated_count} statuses updated, {expired_count} tournaments expired.")
+        logging.info(f"Maintenance complete. {updated_count} statuses updated, {expired_count} tournaments expired, {pruned_count} pruned.")
     else:
         logging.info("Maintenance complete. No changes needed.")
 

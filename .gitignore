@@ -32,3 +32,6 @@ utils/cost_tracker.py
 cloud/cleanup_us_east_1.bat
 cloud/bucket_policy.json
 cloud/cors.json
+cloud/setup_github_secrets.bat
+cloud/__pycache__/lambda_crawler.cpython-310.pyc
+cloud/setup_github_secrets.py

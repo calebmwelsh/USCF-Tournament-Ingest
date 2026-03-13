@@ -1,0 +1,63 @@
+name: Deploy USCF Ingest Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+          ECR_REPOSITORY: uscf-crawler
+          IMAGE_TAG: latest
+        run: |
+          docker build --platform linux/amd64 --provenance=false -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f cloud/Dockerfile .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Update Crawler Lambda
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+          REPO_NAME: uscf-crawler
+          BUCKET_NAME: uscf-chess-data-${{ secrets.AWS_ACCOUNT_ID }}
+          QUEUE_URL: https://sqs.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.AWS_ACCOUNT_ID }}/uscf-tournaments-queue
+        run: |
+          aws lambda update-function-code --function-name USCF-Crawler --image-uri $ECR_REGISTRY/$REPO_NAME:latest
+          aws lambda wait function-updated --function-name USCF-Crawler
+          aws lambda update-function-configuration --function-name USCF-Crawler \
+            --environment "Variables={SQS_QUEUE_URL=$QUEUE_URL,RESULT_BUCKET=$BUCKET_NAME,PLAYWRIGHT_BROWSERS_PATH=/var/task/pw-browsers}" \
+            --timeout 900 --memory-size 2048
+
+      - name: Update Refiner Lambda
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+          REPO_NAME: uscf-crawler
+          BUCKET_NAME: uscf-chess-data-${{ secrets.AWS_ACCOUNT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VERTEX_API_KEY: ${{ secrets.VERTEX_API_KEY }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          GOOGLE_CLOUD_LOCATION: ${{ secrets.GOOGLE_CLOUD_LOCATION }}
+          VERTEX_TEXT_MODEL: ${{ secrets.VERTEX_TEXT_MODEL }}
+        run: |
+          aws lambda update-function-code --function-name USCF-Refiner --image-uri $ECR_REGISTRY/$REPO_NAME:latest
+          aws lambda wait function-updated --function-name USCF-Refiner
+          aws lambda update-function-configuration --function-name USCF-Refiner \
+            --image-config "EntryPoint=['/var/lang/bin/python', '-m', 'awslambdaric', 'cloud.lambda_refiner.handler']" \
+            --environment "Variables={RESULT_BUCKET=$BUCKET_NAME,GEMINI_API_KEY=$GEMINI_API_KEY,VERTEX_API_KEY=$VERTEX_API_KEY,GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT,GOOGLE_CLOUD_LOCATION=$GOOGLE_CLOUD_LOCATION,VERTEX_TEXT_MODEL=$VERTEX_TEXT_MODEL}" \
+            --timeout 300 --memory-size 512
