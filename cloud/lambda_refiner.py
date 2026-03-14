@@ -9,7 +9,10 @@ import time
 import boto3
 
 # Add task root to sys.path to ensure imports work in Lambda
-sys.path.append(os.environ.get('LAMBDA_TASK_ROOT', '/var/task'))
+# In Docker Lambda, the code is in /var/task (LAMBDA_TASK_ROOT)
+TASK_ROOT = os.environ.get('LAMBDA_TASK_ROOT', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if TASK_ROOT not in sys.path:
+    sys.path.append(TASK_ROOT)
 
 from execution.refine_uscf_ai import generate_id, get_gemini_client, refine_entry
 from execution.scrape_uscf import scrape_tournament

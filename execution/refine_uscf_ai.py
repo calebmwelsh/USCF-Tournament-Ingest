@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# Add parent dir to path to import utils
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# Add root to path if running as script to find utils
+if __name__ == "__main__":
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from utils.cost_tracker import tracker
 
 # Load environment variables
